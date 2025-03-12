@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zombie Simulation</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            padding: 20px;
+        }
+        canvas {
+            border: 1px solid #000;
+            background-color: #333;
+            margin-bottom: 15px;
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+            max-width: 600px;
+            justify-content: center;
+        }
+        .settings {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 20px;
+            max-width: 600px;
+            justify-content: center;
+        }
+        .setting-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        label {
+            font-size: 14px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .stat {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-right: 15px;
+        }
+        .color-box {
+            width: 15px;
+            height: 15px;
+            display: inline-block;
+        }
+        .human-color {
+            background-color: #0088ff;
+        }
+        .zombie-color {
+            background-color: #ff0000;
+        }
+        .corpse-color {
+            background-color: #999;
+        }
+        .hunter-color {
+            background-color: #00ff00;
+        }
+        input[type="number"] {
+            width: 60px;
+            padding: 5px;
+        }
+        input[type="checkbox"] {
+            margin-right: 5px;
+        }
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 10px;
+            max-width: 600px;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>Advanced Zombie Survival Simulation</h1>
+    
+    <div class="stats">
+        <div class="stat">
+            <div class="color-box human-color"></div>
+            <span id="humanCount">Humans: 0</span>
+        </div>
+        <div class="stat">
+            <div class="color-box hunter-color"></div>
+            <span id="hunterCount">Hunters: 0</span>
+        </div>
+        <div class="stat">
+            <div class="color-box zombie-color"></div>
+            <span id="zombieCount">Zombies: 0</span>
+        </div>
+        <div class="stat">
+            <div class="color-box corpse-color"></div>
+            <span id="corpseCount">Corpses: 0</span>
+        </div>
+        <div class="stat">
+            <span id="buildingCount">Buildings: 0</span>
+        </div>
+        <div class="stat">
+            <span id="topKills">Top Hunter: 0 kills</span>
+        </div>
+    </div>
+    
+    <div class="settings">
+        <div class="setting-group">
+            <label for="humanInput">Initial Humans:</label>
+            <input type="number" id="humanInput" min="1" max="500" value="100">
+        </div>
+        <div class="setting-group">
+            <label for="zombieInput">Initial Zombies:</label>
+            <input type="number" id="zombieInput" min="1" max="100" value="5">
+        </div>
+        <div class="setting-group">
+            <label for="buildingInput">Buildings:</label>
+            <input type="number" id="buildingInput" min="0" max="50" value="30">
+        </div>
+        <div class="setting-group">
+            <label for="zombieLifespan">Zombie Lifespan (seconds):</label>
+            <input type="number" id="zombieLifespan" min="1" max="120" value="30">
+        </div>
+        <div class="setting-group">
+            <label for="buildingDamage">Building Damage Rate:</label>
+            <input type="number" id="buildingDamage" min="0" max="100" value="10" step="1">
+        </div>
+        <div class="setting-group">
+            <label for="pathfindingToggle">
+                <input type="checkbox" id="pathfindingToggle" checked>
+                Zombie Pathfinding
+            </label>
+        </div>
+        <div class="setting-group">
+            <label for="killChance">Base Kill Chance (%):</label>
+            <input type="number" id="killChance" min="0" max="100" value="10" step="1">
+        </div>
+    </div>
+    
+    <canvas id="simCanvas" width="600" height="600"></canvas>
+    
+    <div class="controls">
+        <button id="startBtn">Start Simulation</button>
+        <button id="resetBtn">Reset</button>
+    </div>
+    
+    <div class="legend">
+        <div class="stat">
+            <div class="color-box human-color"></div>
+            <span>Humans - Regular survivors</span>
+        </div>
+        <div class="stat">
+            <div class="color-box hunter-color"></div>
+            <span>Hunters - Humans with zombie kills (size increases with kills)</span>
+        </div>
+        <div class="stat">
+            <div class="color-box zombie-color"></div>
+            <span>Zombies - Will infect humans and destroy buildings</span>
+        </div>
+        <div class="stat">
+            <div class="color-box corpse-color"></div>
+            <span>Corpses - Dead zombies</span>
+        </div>
+    </div>
+
+    <script>
+        // Canvas setup
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        
+        // Simulation parameters
+        const baseGridSize = 5; // Base size of each entity
+        const cols = Math.floor(width / baseGridSize);
+        const rows = Math.floor(height / baseGridSize);
+        const infectionRadius = baseGridSize;
+        const repulsionForce = 0.3; // Force pushing entities of same type apart
+        const socialDistance = baseGridSize * 3; // Distance at which repulsion starts
+        
+        // Entity arrays
+        let humans = [];
+        let zombies = [];
+        let buildings = [];
+        let corpses = [];
+        
+        // Stats elements
+        const humanCountEl = document.getElementById('humanCount');
+        const zombieCountEl = document.getElementById('zombieCount');
+        const corpseCountEl = document.getElementById('corpseCount');
+        const buildingCountEl = document.getElementById('buildingCount');
+        const hunterCountEl = document.getElementById('hunterCount');
+        const topKillsEl = document.getElementById('topKills');
+        
+        // Settings elements
+        const humanInputEl = document.getElementById('humanInput');
+        const zombieInputEl = document.getElementById('zombieInput');
+        const buildingInputEl = document.getElementById('buildingInput');
+        const zombieLifespanEl = document.getElementById('zombieLifespan');
+        const buildingDamageEl = document.getElementById('buildingDamage');
+        const pathfindingToggleEl = document.getElementById('pathfindingToggle');
+        const killChanceEl = document.getElementById('killChance');
+        
+        // Animation control
+        let animationId = null;
+        let isRunning = false;
+        let lastTimestamp = 0;
+        
+        // Initialize the simulation
+        function initSimulation() {
+            humans = [];
+            zombies = [];
+            buildings = [];
+            corpses = [];
+            
+            const initialHumanCount = parseInt(humanInputEl.value) || 100;
+            const initialZombieCount = parseInt(zombieInputEl.value) || 5;
+            const buildingCount = parseInt(buildingInputEl.value) || 30;
+            
+            // Create buildings (obstacles)
+            for (let i = 0; i < buildingCount; i++) {
+                const size = Math.floor(Math.random() * 80) + 40;
+                const building = {
+                    x: Math.random() * (width - size),
+                    y: Math.random() * (height - size),
+                    width: size,
+                    height: size,
+                    health: 100, // Full health
+                    cells: [] // Will store cells that make up the building
+                };
+                
+                // Create cells for the building
+                for (let bx = 0; bx < building.width; bx += baseGridSize) {
+                    for (let by = 0; by < building.height; by += baseGridSize) {
+                        building.cells.push({
+                            x: building.x + bx,
+                            y: building.y + by,
+                            health: 100
+                        });
+                    }
+                }
+                
+                buildings.push(building);
+            }
+            
+            // Create initial humans
+            for (let i = 0; i < initialHumanCount; i++) {
+                createHuman();
+            }
+            
+            // Create initial zombies
+            for (let i = 0; i < initialZombieCount; i++) {
+                createZombie();
+            }
+            
+            updateStats();
+            drawSimulation();
+        }
+        
+        function createHuman(x, y, isHunter = false, kills = 0) {
+            let human;
+            const baseSpeed = 1.2;
+            const humanSize = baseGridSize;
+            
+            if (x !== undefined && y !== undefined) {
+                human = {
+                    x: x,
+                    y: y,
+                    dx: (Math.random() - 0.5) * 2,
+                    dy: (Math.random() - 0.5) * 2,
+                    size: isHunter ? humanSize + (kills * 0.5) : humanSize, // Hunters grow with kills
+                    speed: baseSpeed,
+                    fleeing: false,
+                    isHunter: isHunter,
+                    kills: kills,
+                    killChance: parseInt(killChanceEl.value) / 100 + (kills * 0.02) // Increase kill chance with each kill
+                };
+            } else {
+                let validPosition = false;
+                
+                while (!validPosition) {
+                    human = {
+                        x: Math.random() * width,
+                        y: Math.random() * height,
+                        dx: (Math.random() - 0.5) * 2,
+                        dy: (Math.random() - 0.5) * 2,
+                        size: humanSize,
+                        speed: baseSpeed,
+                        fleeing: false,
+                        isHunter: false,
+                        kills: 0,
+                        killChance: parseInt(killChanceEl.value) / 100
+                    };
+                    
+                    validPosition = !isCollidingWithBuilding(human);
+                }
+            }
+            
+            humans.push(human);
+        }
+        
+        function createZombie(x, y) {
+            const zombieLifespan = parseInt(zombieLifespanEl.value) || 30;
+            let zombie;
+            const zombieSpeed = 0.8;
+            
+            if (x !== undefined && y !== undefined) {
+                zombie = {
+                    x: x,
+                    y: y,
+                    dx: (Math.random() - 0.5) * 2,
+                    dy: (Math.random() - 0.5) * 2,
+                    size: baseGridSize,
+                    speed: zombieSpeed,
+                    birthTime: Date.now(),
+                    lifespan: zombieLifespan * 1000 // Convert to milliseconds
+                };
+            } else {
+                let validPosition = false;
+                
+                while (!validPosition) {
+                    zombie = {
+                        x: Math.random() * width,
+                        y: Math.random() * height,
+                        dx: (Math.random() - 0.5) * 2,
+                        dy: (Math.random() - 0.5) * 2,
+                        size: baseGridSize,
+                        speed: zombieSpeed,
+                        birthTime: Date.now(),
+                        lifespan: zombieLifespan * 1000 // Convert to milliseconds
+                    };
+                    
+                    validPosition = !isCollidingWithBuilding(zombie);
+                }
+            }
+            
+            zombies.push(zombie);
+        }
+        
+        function createCorpse(x, y) {
+            corpses.push({
+                x: x,
+                y: y,
+                size: baseGridSize
+            });
+        }
+        
+        function isCollidingWithBuilding(entity) {
+            // Check building collision
+            for (const building of buildings) {
+                for (const cell of building.cells) {
+                    if (cell.health <= 0) continue; // Skip destroyed cells
+                    
+                    if (
+                        entity.x < cell.x + baseGridSize &&
+                        entity.x + entity.size > cell.x &&
+                        entity.y < cell.y + baseGridSize &&
+                        entity.y + entity.size > cell.y
+                    ) {
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        }
+        
+        function damageBuilding(zombie) {
+            const damageRate = parseInt(buildingDamageEl.value) || 10;
+            
+            for (const building of buildings) {
+                // Check if zombie is touching the building
+                let touchingBuilding = false;
+                let nearestCell = null;
+                let minDistance = Infinity;
+                
+                for (const cell of building.cells) {
+                    if (cell.health <= 0) continue; // Skip destroyed cells
+                    
+                    if (
+                        zombie.x < cell.x + baseGridSize &&
+                        zombie.x + zombie.size > cell.x &&
+                        zombie.y < cell.y + baseGridSize &&
+                        zombie.y + zombie.size > cell.y
+                    ) {
+                        touchingBuilding = true;
+                        
+                        const dx = cell.x - zombie.x;
+                        const dy = cell.y - zombie.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            nearestCell = cell;
+                        }
+                    }
+                }
+                
+                // Damage the nearest cell
+                if (touchingBuilding && nearestCell) {
+                    nearestCell.health -= damageRate;
+                    
+                    // If cell is destroyed
+                    if (nearestCell.health <= 0) {
+                        // Remove this cell from obstacle detection
+                        const index = building.cells.indexOf(nearestCell);
+                        if (index !== -1) {
+                            building.cells.splice(index, 1);
+                        }
+                    }
+                    
+                    // Bounce zombie away slightly
+                    zombie.dx = -zombie.dx + (Math.random() - 0.5);
+                    zombie.dy = -zombie.dy + (Math.random() - 0.5);
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+        
+        // Apply repulsion forces between entities of the same type
+        function applyRepulsionForces() {
+            // Repulsion between humans
+            for (let i = 0; i < humans.length; i++) {
+                for (let j = i + 1; j < humans.length; j++) {
+                    const human1 = humans[i];
+                    const human2 = humans[j];
+                    
+                    const dx = human2.x - human1.x;
+                    const dy = human2.y - human1.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < socialDistance) {
+                        // Calculate repulsion force (stronger when closer)
+                        const force = repulsionForce * (1 - distance / socialDistance);
+                        const fx = dx / distance * force;
+                        const fy = dy / distance * force;
+                        
+                        // Apply forces in opposite directions
+                        human1.dx -= fx;
+                        human1.dy -= fy;
+                        human2.dx += fx;
+                        human2.dy += fy;
+                    }
+                }
+            }
+            
+            // Repulsion between zombies
+            for (let i = 0; i < zombies.length; i++) {
+                for (let j = i + 1; j < zombies.length; j++) {
+                    const zombie1 = zombies[i];
+                    const zombie2 = zombies[j];
+                    
+                    const dx = zombie2.x - zombie1.x;
+                    const dy = zombie2.y - zombie1.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < socialDistance) {
+                        // Calculate repulsion force (stronger when closer)
+                        const force = repulsionForce * (1 - distance / socialDistance);
+                        const fx = dx / distance * force;
+                        const fy = dy / distance * force;
+                        
+                        // Apply forces in opposite directions
+                        zombie1.dx -= fx;
+                        zombie1.dy -= fy;
+                        zombie2.dx += fx;
+                        zombie2.dy += fy;
+                    }
+                }
+            }
+        }
+        
+        // Make humans attracted to successful hunters
+        function applyHunterAttraction() {
+            // Find hunters
+            const hunters = humans.filter(human => human.isHunter);
+            
+            // Regular humans are attracted to hunters
+            for (const human of humans) {
+                if (human.isHunter) continue; // Hunters aren't attracted to other hunters
+                
+                // Find nearest hunter
+                let nearestHunter = null;
+                let minDistance = Infinity;
+                
+                for (const hunter of hunters) {
+                    const dx = hunter.x - human.x;
+                    const dy = hunter.y - human.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // Weight by kills - more attraction to successful hunters
+                    const weightedDistance = distance / (1 + hunter.kills * 0.1);
+                    
+                    if (weightedDistance < minDistance) {
+                        minDistance = weightedDistance;
+                        nearestHunter = hunter;
+                    }
+                }
+                
+                // Move toward nearest hunter if within range and not fleeing
+                if (nearestHunter && minDistance < 100 && !human.fleeing) {
+                    const dx = nearestHunter.x - human.x;
+                    const dy = nearestHunter.y - human.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // Attraction force proportional to hunter's kills
+                    const attractionForce = 0.2 * (1 + nearestHunter.kills * 0.05);
+                    
+                    // Mix current velocity with attraction
+                    human.dx = human.dx * 0.8 + (dx / distance * attractionForce * human.speed) * 0.2;
+                    human.dy = human.dy * 0.8 + (dy / distance * attractionForce * human.speed) * 0.2;
+                }
+            }
+        }
+        
+        // Update simulation state
+        function updateSimulation(timestamp) {
+            const deltaTime = timestamp - lastTimestamp;
+            lastTimestamp = timestamp;
+            
+            // Apply social forces
+            applyRepulsionForces();
+            applyHunterAttraction();
+            
+            // Check for zombie expiration
+            for (let i = zombies.length - 1; i >= 0; i--) {
+                const zombie = zombies[i];
+                const age = Date.now() - zombie.birthTime;
+                
+                if (age >= zombie.lifespan) {
+                    // Zombie dies, turn into corpse
+                    createCorpse(zombie.x, zombie.y);
+                    zombies.splice(i, 1);
+                }
+            }
+            
+            // Update humans
+            for (let i = humans.length - 1; i >= 0; i--) {
+                const human = humans[i];
+                let killedZombie = false;
+                
+                // Check if human kills or gets infected by zombie
+                for (let j = zombies.length - 1; j >= 0; j--) {
+                    const zombie = zombies[j];
+                    const dx = zombie.x - human.x;
+                    const dy = zombie.y - human.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < infectionRadius) {
+                        // Human might kill zombie based on kill chance
+                        if (Math.random() < human.killChance) {
+                            // Human kills zombie
+                            createCorpse(zombie.x, zombie.y);
+                            zombies.splice(j, 1);
+                            
+                            // Update human's stats
+                            human.kills++;
+                            human.killChance += 0.02; // Increase kill chance with each kill
+                            human.size = baseGridSize + (human.kills * 0.5); // Grow in size
+                            human.isHunter = true; // Become a hunter after first kill
+                            
+                            killedZombie = true;
+                            break;
+                        } else {
+                            // Human gets infected
+                            createZombie(human.x, human.y);
+                            humans.splice(i, 1);
+                            break;
+                        }
+                    }
+                }
+                
+                if (i >= humans.length) continue; // Skip if human was infected
+                
+                // Human fleeing behavior
+                human.fleeing = false;
+                for (const zombie of zombies) {
+                    const dx = zombie.x - human.x;
+                    const dy = zombie.y - human.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < 50) {
+                        // Run away from zombie
+                        human.fleeing = true;
+                        human.dx = -dx / distance * human.speed;
+                        human.dy = -dy / distance * human.speed;
+                        break;
+                    }
+                }
+                
+                // Random movement if not fleeing
+                if (!human.fleeing && !killedZombie && Math.random() < 0.02) {
+                    human.dx = (Math.random() - 0.5) * human.speed * 2;
+                    human.dy = (Math.random() - 0.5) * human.speed * 2;
+                }
+                
+                // Move human
+                moveEntity(human);
+            }
+            
+            // Update zombies
+            for (const zombie of zombies) {
+                // Try to damage building first
+                const isDamagingBuilding = damageBuilding(zombie);
+                
+                if (!isDamagingBuilding) {
+                    // Target nearest human if pathfinding is enabled
+                    if (pathfindingToggleEl.checked) {
+                        let nearestHuman = null;
+                        let minDistance = Infinity;
+                        
+                        for (const human of humans) {
+                            const dx = human.x - zombie.x;
+                            const dy = human.y - zombie.y;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            
+                            if (distance < minDistance) {
+                                minDistance = distance;
+                                nearestHuman = human;
+                            }
+                        }
+                        
+                        // Chase nearest human
+                        if (nearestHuman && minDistance < 150) {
+                            const dx = nearestHuman.x - zombie.x;
+                            const dy = nearestHuman.y - zombie.y;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            
+                            zombie.dx = dx / distance * zombie.speed;
+                            zombie.dy = dy / distance * zombie.speed;
+                        } else if (Math.random() < 0.01) {
+                            // Random movement if no humans nearby
+                            zombie.dx = (Math.random() - 0.5) * zombie.speed * 2;
+                            zombie.dy = (Math.random() - 0.5) * zombie.speed * 2;
+                        }
+                    } else if (Math.random() < 0.01) {
+                        // Random movement if pathfinding is disabled
+                        zombie.dx = (Math.random() - 0.5) * zombie.speed * 2;
+                        zombie.dy = (Math.random() - 0.5) * zombie.speed * 2;
+                    }
+                    
+                    // Move zombie
+                    moveEntity(zombie);
+                }
+            }
+            
+            // Check if simulation should end
+            if (humans.length === 0 && isRunning) {
+                stopSimulation();
+                alert("Zombies have taken over the city!");
+            }
+            
+            // Clean up empty buildings
+            for (let i = buildings.length - 1; i >= 0; i--) {
+                if (buildings[i].cells.length === 0) {
+                    buildings.splice(i, 1);
+                }
+            }
+            
+            updateStats();
+        }
+        
+        function moveEntity(entity) {
+            const newX = entity.x + entity.dx;
+            const newY = entity.y + entity.dy;
+            
+            // Check boundaries
+            if (newX > 0 && newX < width - entity.size) {
+                entity.x = newX;
+            } else {
+                entity.dx = -entity.dx;
+            }
+            
+            if (newY > 0 && newY < height - entity.size) {
+                entity.y = newY;
+            } else {
+                entity.dy = -entity.dy;
+            }
+            
+            // Building collision check for humans - zombies can damage buildings
+            if (entity.fleeing !== undefined) { // It's a human
+                for (const building of buildings) {
+                    for (const cell of building.cells) {
+                        if (cell.health <= 0) continue; // Skip destroyed cells
+                        
+                        if (
+                            entity.x < cell.x + baseGridSize &&
+                            entity.x + entity.size > cell.x &&
+                            entity.y < cell.y + baseGridSize &&
+                            entity.y + entity.size > cell.y
+                        ) {
+                            entity.x -= entity.dx;
+                            entity.y -= entity.dy;
+                            entity.dx = (Math.random() - 0.5) * entity.speed * 2;
+                            entity.dy = (Math.random() - 0.5) * entity.speed * 2;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Draw the simulation
+        function drawSimulation() {
+            ctx.clearRect(0, 0, width, height);
+            
+            // Draw corpses
+            ctx.fillStyle = '#999';
+            for (const corpse of corpses) {
+                ctx.fillRect(corpse.x, corpse.y, corpse.size, corpse.size);
+            }
+            
+            // Draw buildings
+            for (const building of buildings) {
+                for (const cell of building.cells) {
+                    // Color depends on health
+                    const healthPercent = cell.health / 100;
+                    const colorValue = Math.floor(55 + (healthPercent * 200));
+                    ctx.fillStyle = `rgb(${colorValue}, ${colorValue}, ${colorValue})`;
+                    ctx.fillRect(cell.x, cell.y, baseGridSize, baseGridSize);
+                }
+            }
+            
+            // Draw humans (regular humans in blue, hunters in green)
+            for (const human of humans) {
+                if (human.isHunter) {
+                    ctx.fillStyle = '#00ff00'; // Green for hunters
+                } else {
+                    ctx.fillStyle = '#0088ff'; // Blue for regular humans
+                }
+                
+                ctx.fillRect(human.x, human.y, human.size, human.size);
+            }
+            
+            // Draw zombies
+            ctx.fillStyle = '#ff0000';
+            for (const zombie of zombies) {
+                ctx.fillRect(zombie.x, zombie.y, zombie.size, zombie.size);
+            }
+        }
+        
+        // Animation loop
+        function animate(timestamp) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            
+            updateSimulation(timestamp);
+            drawSimulation();
+            updateStats();
+            
+            if (isRunning) {
+                animationId = requestAnimationFrame(animate);
+            }
+        }
+        
+        // Start simulation
+        function startSimulation() {
+            if (!isRunning) {
+                isRunning = true;
+                document.getElementById('startBtn').textContent = 'Pause';
+                lastTimestamp = 0;
+                animationId = requestAnimationFrame(animate);
+            } else {
+                stopSimulation();
+            }
+        }
+        
+        // Stop simulation
+        function stopSimulation() {
+            isRunning = false;
+            document.getElementById('startBtn').textContent = 'Start Simulation';
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+        }
+        
+        // Update stats display
+        function updateStats() {
+            const regularHumans = humans.filter(h => !h.isHunter).length;
+            const hunters = humans.filter(h => h.isHunter).length;
+            
+            humanCountEl.textContent = `Humans: ${regularHumans}`;
+            hunterCountEl.textContent = `Hunters: ${hunters}`;
+            zombieCountEl.textContent = `Zombies: ${zombies.length}`;
+            corpseCountEl.textContent = `Corpses: ${corpses.length}`;
+            buildingCountEl.textContent = `Buildings: ${buildings.length}`;
+            
+            // Find top killer
+            let topKiller = { kills: 0 };
+            for (const human of humans) {
+                if (human.kills > topKiller.kills) {
+                    topKiller = human;
+                }
+            }
+            
+            topKillsEl.textContent = `Top Hunter: ${topKiller.kills} kills`;
+        }
+        
+        // Event listeners
+        document.getElementById('startBtn').addEventListener('click', startSimulation);
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            stopSimulation();
+            initSimulation();
+        });
+        
+        // Initialize on load
+        initSimulation();
+    </script>
+</body>
+</html>
